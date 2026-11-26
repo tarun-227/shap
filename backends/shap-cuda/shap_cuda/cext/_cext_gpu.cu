@@ -27,11 +27,11 @@ struct CategoryConstraint {
 
   __host__ __device__ static bool CategoryInMask(int categories,
                                                  float category) {
-    int category_int = static_cast<int>(category);
-    if (category_int < 1) {
+    // category c sets bit c, matching category_in_threshold in tree_shap.h
+    if (!(category >= 0 && category < 31)) {
       return false;
     }
-    int category_flag = 1 << (category_int - 1);
+    int category_flag = 1 << static_cast<int>(category);
     return (categories & category_flag) != 0;
   }
 

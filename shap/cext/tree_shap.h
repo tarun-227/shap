@@ -10,6 +10,7 @@
 #include <fstream>
 #include <stdio.h>
 #include <cmath>
+#include <cstdint>
 #include <ctime>
 #if defined(_WIN32) || defined(WIN32)
     #include <malloc.h>
@@ -152,10 +153,13 @@ inline transform_f get_transform(unsigned model_transform) {
     return transform;
 }
 
-// threshold is a double so masks with categories above 24 keep their low bits
+// The threshold of a categorical split is a bitmask of the categories that go left:
+// category c sets bit c. A double holds integers exactly up to 2**53, so categories
+// 0-52 are supported. Anything else, including NaN and negative values, goes right.
 inline bool category_in_threshold(tfloat threshold, tfloat category) {
-    int category_flag = (1 << (int(category) - 1));
-    return (int(threshold) & category_flag) != 0;
+    if (!(category >= 0 && category < 53)) return false;
+    const std::uint64_t category_flag = std::uint64_t(1) << static_cast<unsigned>(category);
+    return (static_cast<std::uint64_t>(threshold) & category_flag) != 0;
 }
 
 inline tfloat *tree_predict(unsigned i, const TreeEnsemble &trees, const tfloat *x, const bool *x_missing) {

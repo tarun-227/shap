@@ -2115,11 +2115,9 @@ class SingleTree:
                         self.thresholds[vsplit_idx] = vertex["threshold"]
                         self.threshold_types[vsplit_idx] = 0
                     elif isinstance(vertex["threshold"], str):
-                        threshold = 0.0
+                        # bitmask of the left-going categories, category c sets bit c
                         categories = [int(x) for x in vertex["threshold"].split("||")]
-                        for cat in categories:
-                            threshold += 2 ** (cat - 1)
-                        self.thresholds[vsplit_idx] = threshold
+                        self.thresholds[vsplit_idx] = float(sum(1 << cat for cat in categories))
                         self.threshold_types[vsplit_idx] = 1  # Indicates that this is a categorical split
                     else:
                         raise TypeError(f"Threshold type {type(vertex['threshold'])} not supported")
@@ -2846,7 +2844,7 @@ class TreeliteModelLoader:
         # Categorical splits (node_type == 2). treelite lists per-node categories in
         # category_list (sliced by category_list_begin/end) plus a flag
         # category_list_right_child. SHAP encodes the LEFT-going categories as a
-        # bitmask (sum of 2**(cat-1)) with threshold_type=1.
+        # bitmask (category c sets bit c) with threshold_type=1.
         threshold_types = np.zeros(num_nodes, dtype=np.int32)
         cat_node_mask = node_type == 2
         if cat_node_mask.any():
@@ -2860,23 +2858,9 @@ class TreeliteModelLoader:
                     children_left[nid], children_right[nid] = cright[nid], cleft[nid]
                 else:
                     children_left[nid], children_right[nid] = cleft[nid], cright[nid]
-                threshold[nid] = float(np.sum(2.0 ** (node_cats.astype(np.float64) - 1)))
+                threshold[nid] = float(sum(1 << int(cat) for cat in node_cats))
                 threshold_types[nid] = 1
                 children_default[nid] = cleft[nid] if default_left[nid] else cright[nid]
-                if 0 in node_cats:
-                    # The C extension uses (1 << (cat-1)); for cat=0 this is
-                    # (1 << -1) = UB, acting as (1 << 31) = 0x80000000 on x86.
-                    # cat=0 ALWAYS goes to children_right. Fix: complement encoding
-                    # + swap so cat=0 falls to children_right = the correct leaf.
-                    # 0xFFFFFF = 2^24-1: exactly representable in float32,
-                    # bit31=0 ensures cat=0 UB always ANDs to 0.
-                    bitmask_nz = int(threshold[nid])
-                    threshold[nid] = float(0xFFFFFF - bitmask_nz)
-                    children_left[nid], children_right[nid] = (
-                        children_right[nid],
-                        children_left[nid],
-                    )
-                    children_default[nid] = cleft[nid] if default_left[nid] else cright[nid]
 
         features = split_index.astype(np.int32)
 

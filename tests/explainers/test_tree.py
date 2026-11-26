@@ -3501,6 +3501,37 @@ def test_lightgbm_categorical_split_interventional_high_category():
     np.testing.assert_allclose(sv.base_values + sv.values.sum(axis=1), predictions, atol=1e-6)
 
 
+@pytest.mark.parametrize("left_categories", [[0], [0, 2], [1, 3]])
+def test_lightgbm_categorical_split_category_zero(left_categories):
+    """LightGBM category codes start at 0, so category 0 must be routed like any other category."""
+    lightgbm = pytest.importorskip("lightgbm")
+    X = np.tile(np.array([[0.0], [1.0], [2.0], [3.0]]), (30, 1))
+    y = np.isin(X[:, 0], left_categories).astype(float)
+    model = lightgbm.train(
+        {
+            "objective": "regression",
+            "num_leaves": 2,
+            "min_data_in_leaf": 1,
+            "min_data_per_group": 1,
+            "cat_smooth": 0,
+            "cat_l2": 0,
+            "max_cat_to_onehot": 1,
+            "verbose": -1,
+            "num_threads": 1,
+        },
+        lightgbm.Dataset(X, label=y, categorical_feature=[0]),
+        num_boost_round=3,
+    )
+    X_test = X[:4]
+    predictions = model.predict(X_test, raw_score=True)
+
+    explainer = shap.TreeExplainer(model, X_test, feature_perturbation="interventional")
+    assert (explainer.model.threshold_types == 1).any()
+    np.testing.assert_allclose(explainer.model.predict(X_test), predictions, atol=1e-6)
+    sv = explainer(X_test)
+    np.testing.assert_allclose(sv.base_values + sv.values.sum(axis=1), predictions, atol=1e-6)
+
+
 def test_treelite_xgboost_multiple_targets():
     """Trees assigned to different regression targets must not be summed together."""
     treelite = pytest.importorskip("treelite", minversion="4.0")
